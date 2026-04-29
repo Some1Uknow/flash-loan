@@ -2,20 +2,13 @@ use anchor_lang::prelude::*;
 
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token::{transfer, Mint, Token, TokenAccount, Transfer},
+    token::{Mint, Token, TokenAccount},
 };
-use solana_instructions_sysvar::{
-    load_current_index_checked, load_instruction_at_checked, ID as INSTRUCTIONS_SYSVAR_ID,
-};
+use solana_instructions_sysvar::ID as INSTRUCTIONS_SYSVAR_ID;
 
 pub mod error;
+pub mod instructions;
 pub use error::*;
-
-pub mod borrow;
-pub mod repay;
-
-pub use borrow::*;
-pub use repay::*;
 
 declare_id!("22222222222222222222222222222222222222222222");
 
@@ -24,11 +17,11 @@ pub mod flash_loan {
     use super::*;
 
     pub fn borrow(ctx: Context<Loan>, borrow_amount: u64) -> Result<()> {
-        borrow::handler(ctx, borrow_amount)
+        instructions::borrow::handler(ctx, borrow_amount)
     }
 
     pub fn repay(ctx: Context<Loan>) -> Result<()> {
-        repay::handler(ctx)
+        instructions::repay::handler(ctx)
     }
 }
 

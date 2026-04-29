@@ -1,8 +1,8 @@
 use anchor_lang::prelude::*;
-use anchor_lang::Discriminator;
 use anchor_spl::token::{transfer, Transfer};
+use solana_instructions_sysvar::load_instruction_at_checked;
 
-use crate::{instruction, Loan, ProtocolError, ID};
+use crate::{Loan, ProtocolError};
 
 pub fn handler(ctx: Context<Loan>) -> Result<()> {
     let ixs = ctx.accounts.instructions.to_account_info();

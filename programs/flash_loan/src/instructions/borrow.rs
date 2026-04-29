@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_lang::Discriminator;
 use anchor_spl::token::{transfer, Transfer};
+use solana_instructions_sysvar::{load_current_index_checked, load_instruction_at_checked};
 
 use crate::{instruction, Loan, ProtocolError, ID};
 
