@@ -312,14 +312,30 @@ The `tests/` suite uses:
 
 This gives a fast in-process test VM with an Anchor-friendly provider interface.
 
-The tests exercise:
+The test suite is split by concern:
 
-1. successful borrow + repay round trip
-2. fee capture by the protocol vault
+- `tests/happy-path.spec.ts`
+- `tests/borrow-guards.spec.ts`
+- `tests/repay-guards.spec.ts`
+- shared helpers in `tests/helpers/fixture.ts`
+
+Current TypeScript integration coverage: `11` passing tests.
+
+The tests currently verify:
+
+1. successful atomic borrow + repay round trip, including fee capture by the protocol vault
+2. deterministic fee behavior across multiple borrow sizes
 3. invalid zero-amount borrow rejection
-4. invalid final-instruction rejection when a transaction ends with `borrow` instead of `repay`
-5. mismatched repay account rejection
-6. standalone repay failure behavior
+4. invalid final-instruction rejection when a transaction ends with `borrow`
+5. rejection when the final instruction belongs to another program
+6. rejection when `repay` points at the wrong protocol ATA
+7. rejection when `repay` points at the wrong borrower ATA
+8. rejection when the token program account is wrong
+9. standalone repay failure behavior
+10. insufficient borrower balance during repay
+11. repayment amount derivation from the encoded borrow instruction payload
+
+In addition to the LiteSVM suite, the Rust side still runs `cargo test` for compile-time and macro-expansion validation.
 
 ## Running the Project
 
@@ -343,6 +359,8 @@ cargo test
 npm run test:ts
 ```
 
+At the time of writing, this runs 11 passing LiteSVM integration tests.
+
 ## Repository Layout
 
 ```text
@@ -351,7 +369,10 @@ programs/flash_loan/src/error.rs
 programs/flash_loan/src/instructions.rs
 programs/flash_loan/src/instructions/borrow.rs
 programs/flash_loan/src/instructions/repay.rs
-tests/flash_loan.spec.ts
+tests/helpers/fixture.ts
+tests/happy-path.spec.ts
+tests/borrow-guards.spec.ts
+tests/repay-guards.spec.ts
 ```
 
 ## Design Summary

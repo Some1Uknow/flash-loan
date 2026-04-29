@@ -24,9 +24,9 @@ const IDL = JSON.parse(
   readFileSync(path.join(process.cwd(), "target/idl/flash_loan.json"), "utf8"),
 );
 
-type FlashLoanProgram = Program<any>;
+export type FlashLoanProgram = Program<any>;
 
-type Fixture = {
+export type Fixture = {
   client: ReturnType<typeof fromWorkspace>;
   provider: LiteSVMProvider;
   program: FlashLoanProgram;
@@ -38,14 +38,28 @@ type Fixture = {
   protocolAta: PublicKey;
 };
 
-const FLASH_LOAN_FEE_BPS = 500n;
-const BPS_DENOMINATOR = 10_000n;
+export type FixtureOptions = {
+  protocolLiquidity?: number;
+  borrowerLiquidity?: number;
+};
 
-function feeFor(amount: bigint): bigint {
+export const INSTRUCTIONS_SYSVAR = new PublicKey(
+  "Sysvar1nstructions1111111111111111111111111",
+);
+export const ASSOCIATED_TOKEN_PROGRAM = new PublicKey(
+  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+);
+export const FLASH_LOAN_FEE_BPS = 500n;
+export const BPS_DENOMINATOR = 10_000n;
+
+export function feeFor(amount: bigint): bigint {
   return (amount * FLASH_LOAN_FEE_BPS) / BPS_DENOMINATOR;
 }
 
-function decodeTokenAmount(client: Fixture["client"], address: PublicKey): bigint {
+export function decodeTokenAmount(
+  client: Fixture["client"],
+  address: PublicKey,
+): bigint {
   const account = client.getAccount(address);
   if (!account) {
     throw new Error(`missing token account ${address.toBase58()}`);
@@ -57,7 +71,9 @@ function decodeTokenAmount(client: Fixture["client"], address: PublicKey): bigin
   );
 }
 
-async function setupFixture(): Promise<Fixture> {
+export async function setupFixture(
+  options: FixtureOptions = {},
+): Promise<Fixture> {
   const client = fromWorkspace(process.cwd());
   const provider = new LiteSVMProvider(client);
   const program = new Program(IDL, provider);
@@ -110,9 +126,21 @@ async function setupFixture(): Promise<Fixture> {
   );
   await provider.sendAndConfirm(createMintTx, [mint]);
 
+  const protocolLiquidity = options.protocolLiquidity ?? 1_000;
+  const borrowerLiquidity = options.borrowerLiquidity ?? 100;
   const seedLiquidityTx = new Transaction().add(
-    createMintToInstruction(mint.publicKey, protocolAta, payer.publicKey, 1_000),
-    createMintToInstruction(mint.publicKey, borrowerAta, payer.publicKey, 100),
+    createMintToInstruction(
+      mint.publicKey,
+      protocolAta,
+      payer.publicKey,
+      protocolLiquidity,
+    ),
+    createMintToInstruction(
+      mint.publicKey,
+      borrowerAta,
+      payer.publicKey,
+      borrowerLiquidity,
+    ),
   );
   await provider.sendAndConfirm(seedLiquidityTx);
 
@@ -129,25 +157,25 @@ async function setupFixture(): Promise<Fixture> {
   };
 }
 
-function buildAccounts(fixture: Fixture, overrides?: Partial<Record<string, PublicKey>>) {
+export function buildAccounts(
+  fixture: Fixture,
+  overrides?: Partial<Record<string, PublicKey>>,
+) {
   return {
     borrower: overrides?.borrower ?? fixture.borrower.publicKey,
     protocol: overrides?.protocol ?? fixture.protocol,
     mint: overrides?.mint ?? fixture.mint.publicKey,
     borrowerAta: overrides?.borrowerAta ?? fixture.borrowerAta,
     protocolAta: overrides?.protocolAta ?? fixture.protocolAta,
-    instructions:
-      overrides?.instructions ??
-      new PublicKey("Sysvar1nstructions1111111111111111111111111"),
+    instructions: overrides?.instructions ?? INSTRUCTIONS_SYSVAR,
     tokenProgram: overrides?.tokenProgram ?? TOKEN_PROGRAM_ID,
     associatedTokenProgram:
-      overrides?.associatedTokenProgram ??
-      new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"),
+      overrides?.associatedTokenProgram ?? ASSOCIATED_TOKEN_PROGRAM,
     systemProgram: overrides?.systemProgram ?? SystemProgram.programId,
   };
 }
 
-async function expectAnchorFailure(
+export async function expectAnchorFailure(
   promise: Promise<unknown>,
   expectedFragment: string,
 ) {
@@ -163,96 +191,26 @@ async function expectAnchorFailure(
   }
 }
 
-describe("flash_loan with anchor-litesvm", () => {
-  it("executes borrow + repay atomically and leaves the fee in the protocol vault", async () => {
-    const fixture = await setupFixture();
-    const borrowAmount = 80n;
-    const fee = feeFor(borrowAmount);
+export function captureBalances(fixture: Fixture) {
+  return {
+    protocol: decodeTokenAmount(fixture.client, fixture.protocolAta),
+    borrower: decodeTokenAmount(fixture.client, fixture.borrowerAta),
+  };
+}
 
-    const protocolBefore = decodeTokenAmount(fixture.client, fixture.protocolAta);
-    const borrowerBefore = decodeTokenAmount(fixture.client, fixture.borrowerAta);
+export async function buildBorrowIx(fixture: Fixture, amount: bigint) {
+  return fixture.program.methods
+    .borrow(new BN(amount.toString()))
+    .accounts(buildAccounts(fixture))
+    .instruction();
+}
 
-    const borrowIx = await fixture.program.methods
-      .borrow(new BN(borrowAmount.toString()))
-      .accounts(buildAccounts(fixture))
-      .instruction();
-
-    const repayIx = await fixture.program.methods
-      .repay()
-      .accounts(buildAccounts(fixture))
-      .instruction();
-
-    const tx = new Transaction().add(borrowIx, repayIx);
-    await fixture.provider.sendAndConfirm(tx, [fixture.borrower]);
-
-    const protocolAfter = decodeTokenAmount(fixture.client, fixture.protocolAta);
-    const borrowerAfter = decodeTokenAmount(fixture.client, fixture.borrowerAta);
-
-    expect(protocolAfter).to.equal(protocolBefore + fee);
-    expect(borrowerAfter).to.equal(borrowerBefore - fee);
-  });
-
-  it("rejects zero-amount borrows", async () => {
-    const fixture = await setupFixture();
-
-    await expectAnchorFailure(
-      fixture.program.methods
-        .borrow(new BN(0))
-        .accounts(buildAccounts(fixture))
-        .signers([fixture.borrower])
-        .rpc(),
-      "InvalidAmount",
-    );
-  });
-
-  it("rejects a borrow transaction whose final instruction is not repay", async () => {
-    const fixture = await setupFixture();
-
-    await expectAnchorFailure(
-      fixture.program.methods
-        .borrow(new BN(50))
-        .accounts(buildAccounts(fixture))
-        .signers([fixture.borrower])
-        .rpc(),
-      "InvalidIx",
-    );
-  });
-
-  it("rejects a repay leg that points at the wrong protocol ATA", async () => {
-    const fixture = await setupFixture();
-    const wrongProtocolAta = getAssociatedTokenAddressSync(
-      fixture.mint.publicKey,
-      fixture.borrower.publicKey,
-      false,
-    );
-
-    const borrowIx = await fixture.program.methods
-      .borrow(new BN(50))
-      .accounts(buildAccounts(fixture))
-      .instruction();
-
-    const repayIx = await fixture.program.methods
-      .repay()
-      .accounts(buildAccounts(fixture, { protocolAta: wrongProtocolAta }))
-      .instruction();
-
-    const tx = new Transaction().add(borrowIx, repayIx);
-    await expectAnchorFailure(
-      fixture.provider.sendAndConfirm(tx, [fixture.borrower]),
-      "InvalidProtocolAta",
-    );
-  });
-
-  it("fails standalone repay because the transaction does not carry a valid borrow prelude", async () => {
-    const fixture = await setupFixture();
-
-    await expectAnchorFailure(
-      fixture.program.methods
-        .repay()
-        .accounts(buildAccounts(fixture))
-        .signers([fixture.borrower])
-        .rpc(),
-      "failed",
-    );
-  });
-});
+export async function buildRepayIx(
+  fixture: Fixture,
+  overrides?: Partial<Record<string, PublicKey>>,
+) {
+  return fixture.program.methods
+    .repay()
+    .accounts(buildAccounts(fixture, overrides))
+    .instruction();
+}
