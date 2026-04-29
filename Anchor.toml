@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-blueshift_anchor_flash_loan = "9ewZK3M7tG8kgcWhHiy33iTbcYpzkiof8L8XZzhSb6np"
+flash_loan = "22222222222222222222222222222222222222222222"
 
 [provider]
 cluster = "localnet"

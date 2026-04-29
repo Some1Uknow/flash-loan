@@ -14,14 +14,16 @@ cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
-idl-build = ["anchor-lang/idl-build"]
+idl-build = ["anchor-spl/idl-build"]
 anchor-debug = []
 custom-heap = []
 custom-panic = []
 
 
 [dependencies]
-anchor-lang = "1.0.1"
+anchor-lang = { version = "1.0.1", features = ["init-if-needed"] }
+anchor-spl = "1.0.1"
+solana-instructions-sysvar = "3.0.0"
 
 [dev-dependencies]
 litesvm = "0.10.0"
